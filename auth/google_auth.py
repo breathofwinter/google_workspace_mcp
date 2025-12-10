@@ -7,7 +7,7 @@ import logging
 import os
 
 from typing import List, Optional, Tuple, Dict, Any
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
@@ -353,7 +353,29 @@ async def start_auth_flow(
             state=oauth_state,
         )
 
-        auth_url, _ = flow.authorization_url(access_type="offline", prompt="consent")
+                auth_url, returned_state = flow.authorization_url(
+            access_type="offline", prompt="consent"
+        )
+
+        # Google sometimes omits the state parameter in the returned URL when
+        # using installed-app client types. Ensure the URL always contains the
+        # state we generated so the callback can validate it.
+        effective_state = returned_state or oauth_state
+        parsed_url = urlparse(auth_url)
+        query_params = parse_qs(parsed_url.query)
+
+        if not query_params.get("state") and effective_state:
+            query_params["state"] = [effective_state]
+            auth_url = urlunparse(
+                parsed_url._replace(query=urlencode(query_params, doseq=True))
+            )
+            logger.warning(
+                "Authorization URL missing state parameter. Added generated state to the URL."
+            )
+
+        oauth_state_to_store = query_params.get("state", [effective_state])[0]
+        if not oauth_state_to_store:
+            raise ValueError("Failed to generate OAuth state for authorization flow")
 
         session_id = None
         try:
@@ -362,7 +384,7 @@ async def start_auth_flow(
             logger.debug(f"Could not retrieve FastMCP session ID for state binding: {e}")
 
         store = get_oauth21_session_store()
-        store.store_oauth_state(oauth_state, session_id=session_id)
+        store.store_oauth_state(oauth_state_to_store, session_id=session_id)
 
         logger.info(
             f"Auth flow started for {user_display_name}. State: {oauth_state[:8]}... Advise user to visit: {auth_url}"
