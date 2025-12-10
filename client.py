@@ -1,9 +1,10 @@
 """
-Minimal OpenAI Agents REPL for the Workspace MCP server (stdio transport).
+Minimal OpenAI Agents REPL for the Workspace MCP server (streamable HTTP).
 
-This example runs the MCP server as a child process over stdio so everything
-stays local—no tunnels or public hosting required. It matches the "all-local"
-behavior you had when the client and server shared the same container/process.
+Connects to an already-running Workspace MCP server—perfect for Docker/
+Compose setups that publish the HTTP transport on port 8000. The default URL is
+``http://localhost:8000/mcp`` (matching ``docker compose up``), but you can
+override it with ``MCP_SERVER_URL``.
 """
 
 import asyncio
@@ -18,7 +19,7 @@ load_dotenv()
 try:
     import agents
     from agents import Agent, OpenAIResponsesModel
-    from agents.mcp import MCPServerStdio, MCPServerStdioParams
+    from agents.mcp import MCPServerStreamableHttp, MCPServerStreamableHttpParams
     from agents.repl import run_demo_loop
     from openai import APIError, AsyncOpenAI
 
@@ -29,35 +30,23 @@ except ImportError:
     )
 
 API_KEY: Final[str | None] = os.environ.get("OPENAI_API_KEY")
-SERVER_COMMAND: Final = os.environ.get("MCP_SERVER_COMMAND", "uvx")
-SERVER_ARGS: Final = os.environ.get("MCP_SERVER_ARGS", "workspace-mcp --tool-tier core")
-GOOGLE_CLIENT_ID: Final[str | None] = os.environ.get("GOOGLE_OAUTH_CLIENT_ID")
-GOOGLE_CLIENT_SECRET: Final[str | None] = os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET")
+SERVER_URL: Final[str] = os.environ.get("MCP_SERVER_URL", "http://localhost:8000/mcp")
+BEARER_TOKEN: Final[str | None] = os.environ.get("MCP_BEARER_TOKEN")
 
 if not API_KEY:
     sys.exit("Set OPENAI_API_KEY before running this script.")
 
-if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
-    sys.exit(
-        "Set GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET so the MCP server "
-        "can authenticate with Google."
-    )
-
-
 async def main() -> None:
     client = AsyncOpenAI(api_key=API_KEY)
 
-    server_params: MCPServerStdioParams = {
-        "command": SERVER_COMMAND,
-        "args": SERVER_ARGS.split(),
-        "env": {
-            **os.environ,
-            "GOOGLE_OAUTH_CLIENT_ID": GOOGLE_CLIENT_ID,
-            "GOOGLE_OAUTH_CLIENT_SECRET": GOOGLE_CLIENT_SECRET,
-        },
+    server_params: MCPServerStreamableHttpParams = {
+        "url": SERVER_URL,
     }
 
-    server = MCPServerStdio(server_params, name="workspace-mcp")
+    if BEARER_TOKEN:
+        server_params["headers"] = {"Authorization": f"Bearer {BEARER_TOKEN}"}
+
+    server = MCPServerStreamableHttp(server_params, name="workspace-mcp")
     await server.connect()
 
     agent = Agent(
@@ -74,8 +63,8 @@ async def main() -> None:
         message = str(err)
         if "Error retrieving tool list" in message and getattr(err, "status_code", None) == 424:
             print(
-                "\nThe MCP server failed to respond over stdio. Ensure it launches correctly, "
-                "your OAuth vars are set, and the command is reachable."
+                "\nThe MCP server failed to respond over streamable HTTP. Ensure the container "
+                "is running on the expected port and your URL/headers are correct."
             )
         else:
             print(f"\nOpenAI API error: {message}")
