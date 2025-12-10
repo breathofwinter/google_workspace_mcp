@@ -11,12 +11,17 @@ import os
 import sys
 from typing import Final
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 try:
     import agents
     from agents import Agent, OpenAIResponsesModel
     from agents.mcp import MCPServerStdio, MCPServerStdioParams
     from agents.repl import run_demo_loop
     from openai import APIError, AsyncOpenAI
+
 except ImportError:
     sys.exit(
         "The 'openai-agents' package is required. Install it with:\n"
@@ -26,8 +31,8 @@ except ImportError:
 API_KEY: Final[str | None] = os.environ.get("OPENAI_API_KEY")
 SERVER_COMMAND: Final = os.environ.get("MCP_SERVER_COMMAND", "uvx")
 SERVER_ARGS: Final = os.environ.get("MCP_SERVER_ARGS", "workspace-mcp --tool-tier core")
-GOOGLE_CLIENT_ID: Final[str | None] = os.environ.get("GOOGLE_CLIENT_ID")
-GOOGLE_CLIENT_SECRET: Final[str | None] = os.environ.get("GOOGLE_CLIENT_SECRET")
+GOOGLE_CLIENT_ID: Final[str | None] = os.environ.get("GOOGLE_OAUTH_CLIENT_ID")
+GOOGLE_CLIENT_SECRET: Final[str | None] = os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET")
 
 if not API_KEY:
     sys.exit("Set OPENAI_API_KEY before running this script.")
