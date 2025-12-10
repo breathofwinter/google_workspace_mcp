@@ -353,7 +353,7 @@ async def start_auth_flow(
             state=oauth_state,
         )
 
-                auth_url, returned_state = flow.authorization_url(
+        auth_url, returned_state = flow.authorization_url(
             access_type="offline", prompt="consent"
         )
 
