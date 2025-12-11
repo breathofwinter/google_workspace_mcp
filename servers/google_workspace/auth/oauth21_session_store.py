@@ -250,11 +250,36 @@ class OAuth21SessionStore:
         Raises:
             ValueError: If the state is missing, expired, or does not match the session.
         """
-        if not state:
-            raise ValueError("Missing OAuth state parameter")
-
         with self._lock:
             self._cleanup_expired_oauth_states_locked()
+            state_info = None
+
+            # If Google dropped the state parameter, attempt a safe recovery
+            # before failing the request. This keeps the flow working for users
+            # while still preventing replay attacks.
+            if not state:
+                matching_states = []
+                if session_id:
+                    matching_states = [
+                        key
+                        for key, value in self._oauth_states.items()
+                        if value.get("session_id") == session_id
+                    ]
+
+                if len(matching_states) == 1:
+                    state = matching_states[0]
+                    logger.warning(
+                        "OAuth callback missing state parameter; recovered using session binding %s",
+                        session_id,
+                    )
+                elif len(self._oauth_states) == 1:
+                    state = next(iter(self._oauth_states.keys()))
+                    logger.warning(
+                        "OAuth callback missing state parameter; recovered using the only pending state"
+                    )
+                else:
+                    raise ValueError("Missing OAuth state parameter")
+
             state_info = self._oauth_states.get(state)
 
             if not state_info:
